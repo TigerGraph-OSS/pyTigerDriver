@@ -173,6 +173,7 @@ VERSION_COMMIT = {
     "v2_6_2": "47be618a7fa40a8f5c2f6b8914a8eb47d06b7995",
     "v3_0_0": "c90ec746a7e77ef5b108554be2133dfd1e1ab1b2",
     "v3_0_5": "a9f902e5c552780589a15ba458adb48984359165",
+    "v3_1_0": "e9d3c5d98e7229118309f6d4bbc9446bad7c4c3d",
     
 }
 
@@ -327,7 +328,7 @@ class GSQL_Client(object):
 
         self._request(self.dialog_url, response)
 
-    def _command_interactive(self, url, content, ans="", out=True):
+    def _command_interactive(self, url, content, ans="", out=False):
 
         def __handle__interactive(reader):
 
