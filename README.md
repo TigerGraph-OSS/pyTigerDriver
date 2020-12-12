@@ -24,10 +24,10 @@ gsql = GSQL_Client("127.0.0.1",username="tigergraph",password="tigergraph")
 
 
 # Example to for localhost with the version specified
-gsql = GSQL_Client("127.0.0.1",username="tigergraph",password="tigergraph", version="v3_0_5") 
+gsql = GSQL_Client("127.0.0.1",username="tigergraph",password="tigergraph", version="3.0.5") 
 
 # Example to for the cloud (Note the CACERT Param for tgcloud.io  file obatained from  https://raw.githubusercontent.com/Zrouga-Mohamed/utilities/master/certificate.crt )
-gsql = GSQL_Client("<Your_instance>.tgcloud.io", version="v3_0_5",username="tigergraph",password="<you_password>", cacert="certificate.crt")
+gsql = GSQL_Client("<Your_instance>.tgcloud.io", version="v3.0.5",username="tigergraph",password="<you_password>", cacert="certificate.crt")
 
 
 print("=============================== LOGIN ============================================")

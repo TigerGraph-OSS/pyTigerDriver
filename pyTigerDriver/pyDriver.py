@@ -165,15 +165,15 @@ def get_option(option, default=""):
 
 
 VERSION_COMMIT = {
-    "v2_4_0": "f6b4892ad3be8e805d49ffd05ee2bc7e7be10dff",
-    "v2_4_1": "47229e675f792374d4525afe6ea10898decc2e44",
-    "v2_5_0": "bc49e20553e9e68212652f6c565cb96c068fab9e",
-    "v2_5_2": "291680f0b003eb89da1267c967728a2d4022a89e",
-    "v2_6_0": "6fe2f50ab9dc8457c4405094080186208bd2edc4",
-    "v2_6_2": "47be618a7fa40a8f5c2f6b8914a8eb47d06b7995",
-    "v3_0_0": "c90ec746a7e77ef5b108554be2133dfd1e1ab1b2",
-    "v3_0_5": "a9f902e5c552780589a15ba458adb48984359165",
-    "v3_1_0": "e9d3c5d98e7229118309f6d4bbc9446bad7c4c3d",
+    "2.4.0": "f6b4892ad3be8e805d49ffd05ee2bc7e7be10dff",
+    "2.4.1": "47229e675f792374d4525afe6ea10898decc2e44",
+    "2.5.0": "bc49e20553e9e68212652f6c565cb96c068fab9e",
+    "2.5.2": "291680f0b003eb89da1267c967728a2d4022a89e",
+    "2.6.0": "6fe2f50ab9dc8457c4405094080186208bd2edc4",
+    "2.6.2": "47be618a7fa40a8f5c2f6b8914a8eb47d06b7995",
+    "3.0.0": "c90ec746a7e77ef5b108554be2133dfd1e1ab1b2",
+    "3.0.5": "a9f902e5c552780589a15ba458adb48984359165",
+    "3.1.0": "e9d3c5d98e7229118309f6d4bbc9446bad7c4c3d",
     
 }
 
@@ -198,7 +198,7 @@ class GSQL_Client(object):
 
         self._version = version
 
-        if self._version and self._version >= "v2_3_0":
+        if self._version and self._version >= "2.3.0":
             self._abort_name = "abortclientsession"
         else:
             self._abort_name = "abortloadingprogress"
@@ -382,8 +382,8 @@ class GSQL_Client(object):
                     CEND = '\033[0m'
                     # print(CRED + "Failed to connect version <> {}".format(k) + CEND)
                     
-                import time
-                time.sleep(2)
+                # import time
+                # time.sleep(2)
         elif  commit_try != "":
             self._client_commit = commit_try
             self._version = version_try
@@ -395,10 +395,13 @@ class GSQL_Client(object):
             r = self._setup_connection(self.login_url, self.base64_credential,cookie=json.dumps(Cookies), auth=False)
             response = r.getresponse()
             ret_code = response.status
+            # print(response.status)
             if ret_code == 200:
                 content = response.read()
                 res = json.loads(content.decode("utf-8"))
-                
+                # print(res)
+                import time
+                time.sleep(1)
                 if "License expired" in res.get("message", ""):
                     raise Exception("TigerGraph Server License is expired! Please update your license!")
 
