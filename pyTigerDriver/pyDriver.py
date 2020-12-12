@@ -430,6 +430,20 @@ class GSQL_Client(object):
 
         self._request(self.abort_url, self._abort_name)
 
+    def run_file(self, path):
+        content = self._load_file_recursively(path)
+        return self._command_interactive(self.file_url, content)
+
+    def run_multiple(self, lines):
+        return self._command_interactive(self.file_url, "\n".join(lines))
+
+    def version(self):
+        return self._command_interactive(self.version_url, "version")
+
+    def help(self):
+        return self._command_interactive(self.help_url, "help")
+
+
     def query(self, content, ans=""):
   
         return self._command_interactive(self.command_url, content, ans)
@@ -482,18 +496,6 @@ class GSQL_Client(object):
                 res += line + "\n"
         return res
 
-    def run_file(self, path):
-        content = self._load_file_recursively(path)
-        return self._command_interactive(self.file_url, content)
-
-    def run_multiple(self, lines):
-        return self._command_interactive(self.file_url, "\n".join(lines))
-
-    def version(self):
-        return self._command_interactive(self.version_url, "version")
-
-    def help(self):
-        return self._command_interactive(self.help_url, "help")
 
 
 class REST_ClientError(Exception):
