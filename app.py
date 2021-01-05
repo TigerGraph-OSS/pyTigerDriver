@@ -1,35 +1,28 @@
-from pyTigerDriver import GSQL_Client
-from pyTigerDriver import REST_Client
+import pyTigerDriver as tg
 
-# Example to for localhost without specifying the version
-#gsql = GSQL_Client("127.0.0.1",username="tigergraph",password="tigergraph")
+tgCl = tg.Client(server_ip="127.0.0.1",username="tigergraph",password="tigergraph",version="3.0.5")
 
 
-# Example to for localhost with the version specified
-gsql = GSQL_Client("127.0.0.1",username="tigergraph",password="tigergraph", version="v3_0_5") 
-
-# Example to for the cloud (Note the CACERT Param for tgcloud.io  file obatained from  https://raw.githubusercontent.com/Zrouga-Mohamed/utilities/master/certificate.crt )
-#gsql = GSQL_Client("<Your_instance>.tgcloud.io", version="v3_0_5",username="tigergraph",password="<you_password>", cacert="certificate.crt")
-
-
-print("=============================== LOGIN ============================================")
-gsql.login() 
+print("======================== SIMPLE RESTPP Queries ==================================")
+print(tgCl.Rest.query("Covid19","selects"))
+print("======================== SIMPLE RESTPP Queries ==================================")
+print(tgCl.Rest.version())
 
 print("============================== SIMPLE LS ===========================================")
-res = gsql.query("ls") 
-
+res = tgCl.Gsql.query("ls")
+print(res)
 print("==============================   LIST USERS   ======================================")
-res = gsql.query("SHOW USER")
-
+res = tgCl.Gsql.query("SHOW USER")
+print(res)
 print("==============================   Create a Secret   ======================================")
-
-res = gsql.query("USE GRAPH MyGraph") # change MyGraph --> to your graph
-res = gsql.query("create secret  mys") # Create a secret
-
+res = tgCl.Gsql.query("USE GRAPH MyGraph") # change MyGraph --> to your graph
+res = tgCl.Gsql.query("create secret  mys") # Create a secret
+print(res)
 print("==============================   Get Secrets   ======================================")
-res = gsql.get_secrets("MyGraph")
-
-print("================================  SHOW SECRET  =======================================")
-res = gsql.query("SHOW SECRET")
+res = tgCl.Gsql.get_secrets("MyGraph")
+print(res)
+# print("================================  SHOW SECRET  =======================================")
+# res = gsql.query("SHOW SECRET")
+# print(res)
 print("=============================== Print Version =========================================")
-gsql.version()
+print(tgCl.Gsql.version())

@@ -58,7 +58,7 @@ class REST_Client(object):
             response = r.getresponse()
             ret_code = response.status
             if ret_code == 401:
-                raise AuthenticationFailedException("Invalid token!")
+                raise ExceptionAuth("Invalid token!")
             response_text = response.read().decode("utf-8")
             self._logger.debug(response_text)
             
@@ -183,4 +183,4 @@ class REST_Client(object):
         return self._post("/graph/" + graph, content=json.dumps(content, ensure_ascii=True))
 
     def query(self, graph, query_name, **kwargs):
-        return self._get("/{0}/{1}".format(graph, query_name), kwargs)
+        return self._get("/query/{0}/{1}".format(graph, query_name), kwargs)

@@ -218,7 +218,7 @@ class GSQL_Client(object):
             "{0}:{1}".format(self._username, self._password).encode("utf-8")).decode("utf-8")
 
      
-        self.is_local = server_ip.startswith("127.0.0.1") or server_ip.startswith("localhost")
+        self.is_local = server_ip.startswith("localhost")
 
         if self.is_local:
             self._base_url = "/gsql/"  
