@@ -68,7 +68,8 @@ Linting using PEP8 Standards
 
 ```Shell
 
-user@box:~$ flake8 --exclude=venv* --ignore=E501 --statistics pyTigerGraphBeta/pyTigerGraphBeta.py
+user@box:~$ flake8 --exclude=venv* --ignore=E501 --statistics pyTigerDriver/restDriver.py
+user@box:~$ flake8 --exclude=venv* --ignore=E501 --statistics pyTigerDriver/pyDriver.py
 
 ```
 
