@@ -368,13 +368,13 @@ class GSQL_Client(object):
     def login(self,commit_try="",version_try=""):
         
         if self._client_commit == "" and commit_try == "":
-            # print('\033[33m' + "======= NO Version defined ============")
+            print('\033[33m' + "======= NO Version defined ============")
             
             for k in VERSION_COMMIT:
-                # print( '\033[33m' + "==== Trying Version : {}".format(k))
+                print( '\033[33m' + "==== Trying Version : {}".format(k))
 
                 if(self.login(version_try=k,commit_try=VERSION_COMMIT[k]) == True):
-                    # print('\x1b[6;30;42m' + "Succeded ! your version is {}".format(k) + '\x1b[0m')
+                    print('\x1b[6;30;42m' + "Succeded ! your version is {}".format(k) + '\x1b[0m')
                     
                     break
                 else:
@@ -447,9 +447,9 @@ class GSQL_Client(object):
         return self._command_interactive(self.help_url, "help")
 
 
-    def query(self, content, ans=""):
+    def query(self, content, ans="", out=False):
   
-        return self._command_interactive(self.command_url, content, ans)
+        return self._command_interactive(self.command_url, content, ans,out)
 
     def use(self, graph):
 
