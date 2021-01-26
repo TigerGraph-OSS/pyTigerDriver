@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 from .misc import ExceptionAuth
-from .pyDriver import GSQL_Client, ExceptionRecursiveRet, ExceptionCodeRet
-from .restDriver import REST_Client, REST_ClientError
+from .pyDriver import GSQL_Client, ExceptionRecursiveRet, ExceptionCodeRet,REST_Client, REST_ClientError
+
 
 class Client():
     def __init__(self, server_ip="127.0.0.1", username="tigergraph", password="tigergraph", cacert=""

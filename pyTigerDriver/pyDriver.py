@@ -3,16 +3,11 @@
 
 
 import re
-import io
 import base64
 import json
 import logging
 import codecs
-import datetime
-from os import getenv
-from os.path import expanduser, isfile
-
-from .misc import quote_plus, urlencode, is_ssl, HTTPConnection, HTTPSConnection, ExceptionAuth
+from .misc import quote_plus, urlencode, is_ssl, HTTPConnection, HTTPSConnection, ExceptionAuth, native_str
 
 if is_ssl:
     import ssl
@@ -27,6 +22,8 @@ class AuthenticationFailedException(Exception):
 class ExceptionCodeRet(Exception):
     pass
 
+class REST_ClientError(Exception):
+    pass
 
 
 PREFIX_CURSOR_UP = "__GSQL__MOVE__CURSOR___UP__"
@@ -70,100 +67,6 @@ def _get_current_mode(line):
     return CATALOG_MODES.get(line[:-1], NULL_MODE)
 
 
-def _parse_catalog(lines):
-
-    vertices = []
-    edges = []
-    graphs = []
-    jobs = []
-    queries = []
-    tuples = []
-
-    current_mode = NULL_MODE
-
-    for line in lines:
-        line = line.strip()
-        if _is_mode_line(line):
-            current_mode = _get_current_mode(line)
-            continue
-
-        if line.startswith("- "):
-            line = line[2:]
-            if current_mode == VERTEX_MODE:
-                e = line.find("(")
-                vertices.append(line[7:e])
-            elif current_mode == EDGE_MODE:
-                s = line.find("EDGE ") + 5
-                e = line.find("(")
-                edges.append(line[s:e])
-            elif current_mode == GRAPH_MODE:
-                s = line.find("Graph ") + 6
-                e = line.find("(")
-                graphs.append(line[s:e])
-            elif current_mode == JOB_MODE:
-                s = line.find("JOB ") + 4
-                e = line.find(" FOR GRAPH")
-                jobs.append(line[s:e])
-            elif current_mode == QUERY_MODE:
-                e = line.find("(")
-                queries.append(line[:e])
-            elif current_mode == TUPLE_MODE:
-                e = line.find("(")
-                tuples.append(line[:e].strip())
-    return {
-        "vertices": vertices,
-        "edges": edges,
-        "graphs": graphs,
-        "jobs": jobs,
-        "queries": queries,
-        "tuples": tuples
-    }
-
-
-def _parse_secrets(lines):
-    secrets = {}
-    current = ""
-    for line in lines:
-        if line.startswith("- Secret: "):
-            current = line[len("- Secret: "):]
-            secrets[current] = {}
-        elif line.startswith("- Alias: "):
-            secrets[current]["alias"] = line[len("- Alias: "):]
-        elif line.startswith("- GraphName: "):
-            secrets[current]["graph"] = line[len("- GraphName: "):]
-        elif line.startswith("- Token: "):
-            m = TOKEN_PATTERN.match(line)
-            if m:
-                token, expire = m.groups()
-                expire_datetime = datetime.datetime.strptime(expire, "%Y-%m-%d %H:%M:%S")
-                if "tokens" not in secrets[current]:
-                    secrets[current]["tokens"] = []
-                secrets[current]["tokens"].append((token, expire_datetime))
-
-    return secrets
-
-
-def _secret_for_graph(secrets, graph):
-    for k, v in secrets.items():
-        if v["graph"] == graph:
-            return k
-
-
-def get_option(option, default=""):
-    try:
-        cfg_path = "tiger.cfg" # expanduser
-        with open(cfg_path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith(option):
-                    values = line.split()
-                    if len(values) >= 2:
-                        return values[1]
-    except:
-        pass
-    return default
-
-
 VERSION_COMMIT = {
     "2.4.0": "f6b4892ad3be8e805d49ffd05ee2bc7e7be10dff",
     "2.4.1": "47229e675f792374d4525afe6ea10898decc2e44",
@@ -182,13 +85,13 @@ class GSQL_Client(object):
 
 
     def __init__(self, server_ip="127.0.0.1", username="tigergraph", password="tigergraph", cacert="",
-                 version="", commit=""):
+                 version="", commit="",graph=""):
 
         self._logger = logging.getLogger("gsql_client.Client")
         self._server_ip = server_ip
         self._username = username
         self._password = password
-
+        self.graph = graph
         if commit:
             self._client_commit = commit
         elif version in VERSION_COMMIT:
@@ -231,16 +134,16 @@ class GSQL_Client(object):
                 self._server_ip = "{0}:{1}".format(server_ip, "14240")
 
   
-        self._initialize_url()
+        self.initialize_url()
 
   
-        self.graph = ""
+
         self.session = ""
         self.properties = ""
 
         self.authorization = 'Basic {0}'.format(self.base64_credential)
 
-    def _initialize_url(self):
+    def initialize_url(self):
         self.command_url = self._base_url + "command"
         self.version_url = self._base_url + "version"
         self.help_url = self._base_url + "help"
@@ -252,15 +155,9 @@ class GSQL_Client(object):
         self.info_url = self._base_url + "getinfo"
         self.abort_url = self._base_url + self._abort_name
 
-    def _get_cookie(self):
+    def get_cookie(self):
 
         cookie = {}
-        if self.is_local:
-            cookie["CLIENT_PATH"] = expanduser("~")
-
-        cookie["GSHELL_TEST"] = getenv("GSHELL_TEST")
-        cookie["COMPILE_THREADS"] = getenv("GSQL_COMPILE_THREADS")
-        cookie["TERMINAL_WIDTH"] = 80
 
         if self.graph:
             cookie["graph"] = self.graph
@@ -276,14 +173,14 @@ class GSQL_Client(object):
 
         return json.dumps(cookie, ensure_ascii=True)
 
-    def _set_cookie(self, cookie_str):
+    def set_cookie(self, cookie_str):
  
         cookie = json.loads(cookie_str)
         self.session = cookie.get("session", "")
         self.graph = cookie.get("graph", "")
         self.properties = cookie.get("properties", "")
 
-    def _setup_connection(self, url, content, cookie=None, auth=True):
+    def setup_connection(self, url, content, cookie=None, auth=True):
         
         if self._protocol == "https":
             ssl._create_default_https_context = ssl._create_unverified_context
@@ -299,7 +196,7 @@ class GSQL_Client(object):
             "Connection": "keep-alive",
             "Content-Type": "application/x-www-form-urlencoded",
             "User-Agent": "Java/1.8.0",
-            "Cookie": self._get_cookie() if cookie is None else cookie
+            "Cookie": self.get_cookie() if cookie is None else cookie
         }
         
         if auth:
@@ -307,10 +204,10 @@ class GSQL_Client(object):
         conn.request("POST", url, encoded, headers)
         return conn
 
-    def _request(self, url, content, handler=None, cookie=None, auth=True):
+    def request(self, url, content, handler=None, cookie=None, auth=True):
         response = None
         try:
-            r = self._setup_connection(url, content, cookie, auth)
+            r = self.setup_connection(url, content, cookie, auth)
             response = r.getresponse()
             ret_code = response.status
             if ret_code == 401:
@@ -324,11 +221,7 @@ class GSQL_Client(object):
             if response:
                 response.close()
 
-    def _dialog(self, response):
-
-        self._request(self.dialog_url, response)
-
-    def _command_interactive(self, url, content, ans="", out=False):
+    def command_interactive(self, url, content, ans="", out=False):
 
         def __handle__interactive(reader):
 
@@ -336,6 +229,9 @@ class GSQL_Client(object):
             for line in reader:
                 line = line.strip()
                 if line.startswith(PREFIX_RET):
+                    print(line)
+                    import time
+                    time.sleep(5000)
                     _, ret = line.split(",", 1)
                     ret = int(ret)
                     if ret != 0:
@@ -347,7 +243,7 @@ class GSQL_Client(object):
                         self._dialog("{0},{1}".format(ik, ans))
                 elif line.startswith(PREFIX_COOKIE):
                     _, cookie_s = line.split(",", 1)
-                    self._set_cookie(cookie_s)
+                    self.set_cookie(cookie_s)
                 elif line.startswith(PREFIX_CURSOR_UP):
                     values = line.split(",")
                     print("\033[" + values[1] + "A")
@@ -363,32 +259,18 @@ class GSQL_Client(object):
                     res.append(line)
             return res
 
-        return self._request(url, content, __handle__interactive)
+        return self.request(url, content, __handle__interactive)
 
     def login(self,commit_try="",version_try=""):
         
         if self._client_commit == "" and commit_try == "":
-            print('\033[33m' + "======= NO Version defined ============")
-            
             for k in VERSION_COMMIT:
-                print( '\033[33m' + "==== Trying Version : {}".format(k))
-
                 if(self.login(version_try=k,commit_try=VERSION_COMMIT[k]) == True):
-                    print('\x1b[6;30;42m' + "Succeded ! your version is {}".format(k) + '\x1b[0m')
-                    
                     break
-                else:
-                    CRED = '\033[91m'
-                    CEND = '\033[0m'
-                    # print(CRED + "Failed to connect version <> {}".format(k) + CEND)
-                    
-                # import time
-                # time.sleep(2)
-        elif  commit_try != "":
+        elif commit_try != "":
             self._client_commit = commit_try
             self._version = version_try
         response = None
-        
         try:
             Cookies = {}
             Cookies['clientCommit'] = self._client_commit
@@ -424,104 +306,33 @@ class GSQL_Client(object):
                 response.close()
             
 
-    def get_auto_keys(self):
-
-        keys = self._request(self.info_url, "autokeys", cookie=self.session)
-        return keys.split(",")
-
-    def quit(self):
-
-        self._request(self.abort_url, self._abort_name)
-
-    def run_file(self, path):
-        content = self._load_file_recursively(path)
-        return self._command_interactive(self.file_url, content)
-
-    def run_multiple(self, lines):
-        return self._command_interactive(self.file_url, "\n".join(lines))
-
-    def version(self):
-        return self._command_interactive(self.version_url, "version")
-
-    def help(self):
-        return self._command_interactive(self.help_url, "help")
 
 
-    def query(self, content, ans="", out=False):
+
+    def execute(self, content, ans="", out=False):
   
-        return self._command_interactive(self.command_url, content, ans,out)
-
-    def use(self, graph):
-
-        return self._command_interactive(self.command_url, "use graph {0}".format(graph))
-
-    def catalog(self):
-
-        lines = self._command_interactive(self.command_url, "ls", out=False)
-        return _parse_catalog(lines)
-
-    def get_secrets(self, graph_name):
-        if self.graph != graph_name:
-            self.use(graph_name)
-        lines = self.query("show secret")
-        return _parse_secrets(lines)
-
-    def get_secret(self, graph_name, create_alias=None):
-        secrets = self.get_secrets(graph_name)
-        s = _secret_for_graph(secrets, graph_name)
-        if s:
-            return s
-        elif create_alias:
-            lines = self.query("create secret {0}".format(create_alias))
-            return lines[0].split()[2]
-
-    def _load_file_recursively(self, file_path):
-        return self._read_file(file_path, set())
-
-    def _read_file(self, file_path, loaded):
-        if not file_path or not isfile(file_path):
-            self._logger.warn("File \"" + file_path + "\" does not exist!")
-            return ""
-
-        if file_path in loaded:
-            self._logger.error("There is an endless loop by using @" + file_path + " cmd recursively.")
-            raise ExceptionRecursiveRet(file_path)
-        else:
-            loaded.add(file_path)
-
-        res = ""
-        with io.open(file_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if FILE_PATTERN.match(line):
-                    res += self._read_file(line[1:], loaded) + "\n"
-                    continue
-                res += line + "\n"
-        return res
-
-
-
-class REST_ClientError(Exception):
-    pass
+        return self.command_interactive(self.command_url, content, ans,out)
 
 
 class REST_Client(object):
+    def __init__(self, server_ip, token="", restPort="9000"):
+        self.token = token
+        self.restPort = restPort
+        server_ip = native_str(server_ip)
 
-    def __init__(self, server_ip):
-
-        self._token = ""
         if ":" in server_ip:
             self._server_ip = server_ip
         else:
-            self._server_ip = server_ip + ":9000"
+            self._server_ip = server_ip + ":" + self.restPort
 
-        self._logger = logging.getLogger("gsql_client.RESTPP")
+        self._logger = logging.getLogger("gsql_client.restpp.RESTPP")
 
     def _setup_connection(self, method, endpoint, parameters, content):
-
-        url = endpoint
+        url = native_str(endpoint)
         if parameters:
-            url += "?" + urlencode(parameters)
+            param_str = native_str(urlencode(parameters))
+            if param_str:  # not None nor Empty
+                url += "?" + param_str
 
         headers = {
             "Content-Language": "en-US",
@@ -537,31 +348,29 @@ class REST_Client(object):
         else:
             encoded = None
 
-        if self._token:
-            headers["Authorization"] = "Bearer: {0}".format(self._token)
+        if self.token:
+            headers["Authorization"] = "Bearer {0}".format(self.token)
 
         conn = HTTPConnection(self._server_ip)
         conn.request(method, url, encoded, headers)
         return conn
 
-    def _request(self, method, endpoint, parameters=None, content=None):
-
+    def request(self, method, endpoint, parameters=None, content=None):
         response = None
         try:
             r = self._setup_connection(method, endpoint, parameters, content)
             response = r.getresponse()
             ret_code = response.status
             if ret_code == 401:
-                raise AuthenticationFailedException("Invalid token!")
+                raise ExceptionAuth("Invalid token!")
             response_text = response.read().decode("utf-8")
             self._logger.debug(response_text)
-            # non strict mode to allow control characters in string
+
             res = json.loads(response_text, strict=False)
 
-            # notice that result is not consistent, we need to handle them differently
             if "error" not in res:
                 return res
-            elif res["error"] and res["error"] != "false":  # workaround for GET /version result
+            elif res["error"] and res["error"] != "false":
                 self._logger.error("API error: " + res["message"])
                 raise REST_ClientError(res.get("message", ""))
             elif "token" in res:
@@ -576,111 +385,19 @@ class REST_Client(object):
             if response:
                 response.close()
 
-    def _get(self, endpoint, parameters=None):
-        return self._request("GET", endpoint, parameters, None)
+    def get(self, endpoint, parameters=None):
+        return self.request("GET", endpoint, parameters, None)
 
-    def _post(self, endpoint, parameters=None, content=None):
-        return self._request("POST", endpoint, parameters, content)
+    def post(self, endpoint, parameters=None, content=None):
+        return self.request("POST", endpoint, parameters, content)
 
-    def _delete(self, endpoint, parameters=None):
-        return self._request("DELETE", endpoint, parameters, None)
+    def delete(self, endpoint, parameters=None):
+        return self.request("DELETE", endpoint, parameters, None)
 
-    def request_token(self, secret, lifetime=None):
-
-        parameters = {
-            "secret": secret
-        }
-        if lifetime:
-            parameters["lifetime"] = lifetime
-
-        res = self._get("/requesttoken", parameters)
-        if res:
-            self._token = res
-            return True
-        else:
-            return False
+    def set_token(self, token):
+        self.token = native_str(token)
 
     def echo(self):
+        return self.get("/echo")
 
-        return self._get("/echo")
 
-    def version(self):
-
-        return self._get("/version")
-
-    def endpoints(self):
-  
-        return self._get("/endpoints")
-
-    def license(self):
-
-        return self._get("/showlicenseinfo")
-
-    def stat(self, graph, **kwargs):
-
-        url = "/builtins/" + graph
-        return self._post(url, content=json.dumps(kwargs, ensure_ascii=True))
-
-    def stat_vertex_number(self, graph, type_name="*"):
-        return self.stat(graph, function="stat_vertex_number", type=type_name)
-
-    def stat_edge_number(self, graph, type_name="*", from_type_name="*", to_type_name="*"):
-        return self.stat(graph, function="stat_edge_number", type=type_name,
-                         from_type=from_type_name, to_type=to_type_name)
-
-    def stat_vertex_attr(self, graph, type_name="*"):
-        return self.stat(graph, function="stat_vertex_attr", type=type_name)
-
-    def stat_edge_attr(self, graph, type_name="*", from_type_name="*", to_type_name="*"):
-        return self.stat(graph, function="stat_edge_attr", type=type_name,
-                         from_type=from_type_name, to_type=to_type_name)
-
-    def select_vertices(self, graph, vertex_type, vertex_id=None, **kwargs):
-
-        endpoint = "/graph/{0}/vertices/{1}".format(graph, vertex_type)
-        if vertex_id:
-            endpoint += "/" + vertex_id
-        return self._get(endpoint, kwargs)
-
-    def select_edges(self, graph, src_type, src_id, edge_type="_", dst_type=None, dst_id=None, **kwargs):
-   
-        endpoint = "/graph/{0}/edges/{1}/{2}/{3}".format(graph, src_type, src_id, edge_type)
-        if dst_type:
-            endpoint += "/" + dst_type
-            if dst_id:
-                endpoint += "/" + dst_id
-        return self._get(endpoint, kwargs)
-
-    def delete_vertices(self, graph, vertex_type, vertex_id=None, **kwargs):
-
-        endpoint = "/graph/{0}/vertices/{1}".format(graph, vertex_type)
-        if vertex_id:
-            endpoint += "/" + vertex_id
-        return self._get(endpoint, kwargs)
-
-    def delete_edges(self, graph, src_type, src_id, edge_type="_", dst_type=None, dst_id=None, **kwargs):
-
-        endpoint = "/graph/{0}/edges/{1}/{2}/{3}".format(graph, src_type, src_id, edge_type)
-        if dst_type:
-            endpoint += "/" + dst_type
-            if dst_id:
-                endpoint += "/" + dst_id
-        return self._delete(endpoint, kwargs)
-
-    def load(self, graph, lines, **kwargs):
-
-        if lines:
-            content = "\n".join(lines)
-        else:
-            content = None
-
-        endpoint = "/ddl/" + graph
-        return self._post(endpoint, kwargs, content)
-
-    def update(self, graph, content):
-
-        return self._post("/graph/" + graph, content=json.dumps(content, ensure_ascii=True))
-
-    def query(self, graph, query_name, **kwargs):
-
-        return self._get("/{0}/{1}".format(graph, query_name), kwargs)

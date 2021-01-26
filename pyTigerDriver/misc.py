@@ -29,7 +29,6 @@ except ImportError:
 
 try:
     import ssl
-
     is_ssl = True
 except ImportError:
     is_ssl = False
