@@ -85,7 +85,7 @@ class GSQL_Client(object):
 
 
     def __init__(self, server_ip="127.0.0.1", username="tigergraph", password="tigergraph", cacert="",
-                 version="", protocol="https", gsPort="8123", commit="",graph=""):
+                 version="", protocol="https", gsPort="9000", commit="",graph=""):
 
         self._logger = logging.getLogger("gsql_client.Client")
         self._server_ip = server_ip
@@ -319,23 +319,21 @@ class GSQL_Client(object):
 
 
 class REST_Client(object):
-    def __init__(self, server_ip,protocol = "",cacert="", token="", username="tigergraph",
-                 restPort="9000", password="tigergraph"):
+    def __init__(self, server_ip,protocol = "https",cacert="", token="", username="tigergraph",
+                 restPort="14240", password="tigergraph"):
         self.token = token
         self.restPort = restPort
         self.username = username
         self.password = password
         self.base64_credential = base64.b64encode(
             "{0}:{1}".format(self.username, self.password).encode("utf-8")).decode("utf-8")
-        if cacert and is_ssl:
+        if self.protocol == "https":
             self._context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
             self._context.check_hostname = False
             self._context.verify_mode = ssl.CERT_REQUIRED
-            self._context.load_verify_locations(cacert)
-            self.protocol = "https"
+            self._context.load_verify_locations(cacert) # ToDo : Get the certificate from URL
         else:
             self._context = None
-            self.protocol = "http"
         server_ip = native_str(server_ip)
 
         if ":" in server_ip:
