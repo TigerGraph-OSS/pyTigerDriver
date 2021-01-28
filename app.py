@@ -1,4 +1,3 @@
-# import pyTigerDriver as tg
 import pyTigerDriver as tg
 
 tgCl = tg.Client(server_ip="127.0.0.1",username="tigergraph",password="tigergraph",version="3.0.5")
