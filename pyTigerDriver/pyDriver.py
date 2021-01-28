@@ -85,13 +85,14 @@ class GSQL_Client(object):
 
 
     def __init__(self, server_ip="127.0.0.1", username="tigergraph", password="tigergraph", cacert="",
-                 version="", commit="",graph=""):
+                 version="", protocol="https", gsPort="8123", commit="",graph=""):
 
         self._logger = logging.getLogger("gsql_client.Client")
         self._server_ip = server_ip
         self._username = username
         self._password = password
         self.graph = graph
+        self.gsPort = gsPort
         if commit:
             self._client_commit = commit
         elif version in VERSION_COMMIT:
@@ -106,17 +107,18 @@ class GSQL_Client(object):
         else:
             self._abort_name = "abortloadingprogress"
 
-        if cacert and is_ssl:
+        self.protocol = protocol
+        if self.protocol == "https":
             self._context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
             self._context.check_hostname = False
             self._context.verify_mode = ssl.CERT_REQUIRED
-            self._context.load_verify_locations(cacert)
-            self._protocol = "https"
+            if cacert:
+                self._context.load_verify_locations(cacert)
+            else:
+                pass
+                # Todo : Get CACERT from url provided
         else:
             self._context = None
-            self._protocol = "http"
-
-   
         self.base64_credential = base64.b64encode(
             "{0}:{1}".format(self._username, self._password).encode("utf-8")).decode("utf-8")
 
@@ -126,17 +128,14 @@ class GSQL_Client(object):
         if self.is_local:
             self._base_url = "/gsql/"  
             if ":" not in server_ip:
-                port = get_option("gsql.server.private_port", "8123")
+                port = self.gsPort
                 self._server_ip = "{0}:{1}".format(server_ip, port)
         else:
             self._base_url = "/gsqlserver/gsql/"  #   
             if ":" not in server_ip:
-                self._server_ip = "{0}:{1}".format(server_ip, "14240")
+                self._server_ip = "{0}:{1}".format(server_ip, self.gsPort)
 
-  
         self.initialize_url()
-
-  
 
         self.session = ""
         self.properties = ""
@@ -220,6 +219,11 @@ class GSQL_Client(object):
         finally:
             if response:
                 response.close()
+
+    def _dialog(self, response):
+
+        self._request(self.dialog_url, response)
+
 
     def command_interactive(self, url, content, ans="", out=False):
 
@@ -315,9 +319,23 @@ class GSQL_Client(object):
 
 
 class REST_Client(object):
-    def __init__(self, server_ip, token="", restPort="9000"):
+    def __init__(self, server_ip,protocol = "",cacert="", token="", username="tigergraph",
+                 restPort="9000", password="tigergraph"):
         self.token = token
         self.restPort = restPort
+        self.username = username
+        self.password = password
+        self.base64_credential = base64.b64encode(
+            "{0}:{1}".format(self.username, self.password).encode("utf-8")).decode("utf-8")
+        if cacert and is_ssl:
+            self._context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+            self._context.check_hostname = False
+            self._context.verify_mode = ssl.CERT_REQUIRED
+            self._context.load_verify_locations(cacert)
+            self.protocol = "https"
+        else:
+            self._context = None
+            self.protocol = "http"
         server_ip = native_str(server_ip)
 
         if ":" in server_ip:
@@ -350,8 +368,14 @@ class REST_Client(object):
 
         if self.token:
             headers["Authorization"] = "Bearer {0}".format(self.token)
+        elif self.username and self.password:
+            headers["Authorization"] = 'Basic {0}'.format(self.base64_credential)
 
-        conn = HTTPConnection(self._server_ip)
+        if self.protocol == "https":
+            ssl._create_default_https_context = ssl._create_unverified_context
+            conn = HTTPSConnection(self._server_ip)
+        else:
+            conn = HTTPConnection(self._server_ip)
         conn.request(method, url, encoded, headers)
         return conn
 
