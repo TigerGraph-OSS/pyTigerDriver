@@ -61,9 +61,9 @@ res = RunQuery("ContactWhen","MyGraph",{"contact":"Chris-Xi","time":"2019-06-05"
 print(res)
 
 
-# print("################ GSQL  ##################")
-# res = tgCl.Gsql.execute("ls")
-# print(res)
+print("################ GSQL  ##################")
+res = tgCl.Gsql.execute("ls")
+print(res)
 
 
 
