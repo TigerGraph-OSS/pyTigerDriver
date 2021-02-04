@@ -85,7 +85,7 @@ class GSQL_Client(object):
 
 
     def __init__(self, server_ip="127.0.0.1", username="tigergraph", password="tigergraph", cacert="",
-                 version="", protocol="https", gsPort="9000", commit="",graph=""):
+                 version="", protocol="https", gsPort="14240", commit="",graph=""):
 
         self._logger = logging.getLogger("gsql_client.Client")
         self._server_ip = server_ip
@@ -319,14 +319,15 @@ class GSQL_Client(object):
 
 
 class REST_Client(object):
-    def __init__(self, server_ip,protocol = "https",cacert="", token="", username="tigergraph",
-                 restPort="14240", password="tigergraph"):
+    def __init__(self, server_ip,protocol,cacert, token, username \
+                 ,restPort, password):
         self.token = token
         self.restPort = restPort
         self.username = username
         self.password = password
         self.base64_credential = base64.b64encode(
             "{0}:{1}".format(self.username, self.password).encode("utf-8")).decode("utf-8")
+        self.protocol = protocol
         if self.protocol == "https":
             self._context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
             self._context.check_hostname = False
