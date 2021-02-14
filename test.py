@@ -18,7 +18,7 @@ import pyTigerDriver as tg
 
 # tgcloud.io Case : /gsqlserver/gsql/
 # tgCl = tg.Client(server_ip="ttl.i.tgcloud.io",gsPort="14240", restPort="9000"
-#                  , username="tigergraph", password="tigergraph"
+#                  , username="tigergraph", password="tigergraph", local = False
 #                  , version="3.0.5",protocol="https"
 #                  , graph="MyGraph",token="ptkqg4c8tdncjvspbtkt2crird81dron")
 

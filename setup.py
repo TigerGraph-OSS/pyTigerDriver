@@ -13,7 +13,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     keywords=['gsql', 'client','tigergraph'],
     requires=["requests"],
-    url="https://github.com/Zrouga-Mohamed/pyTigerDriver",
+    url="https://github.com/Zrouga-Mohamed/pyTigerDriver ",
     packages=setuptools.find_packages(),
     classifiers=[
         "Development Status :: 5 - Production/Stable",
