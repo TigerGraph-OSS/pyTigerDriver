@@ -5,14 +5,14 @@ with open("README.md", "r") as rdm:
 
 setuptools.setup(
     name="pyTigerDriver",
-    version="v1.0.11",
+    version="v1.0.12",
     author="Zrouga Mohamed",
     author_email="medzrouga@gmail.com",
     description="GSQL client for TigerGraph",
     long_description=desc,
     long_description_content_type="text/markdown",
     keywords=['gsql', 'client','tigergraph'],
-    requires=[],
+    requires=["requests"],
     url="https://github.com/Zrouga-Mohamed/pyTigerDriver",
     packages=setuptools.find_packages(),
     classifiers=[
