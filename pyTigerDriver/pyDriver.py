@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
 
-
 import re
 import base64
 import json
 import logging
 import codecs
+import requests
 from .misc import quote_plus, urlencode, is_ssl, HTTPConnection, HTTPSConnection, ExceptionAuth, native_str
 
 if is_ssl:
@@ -16,11 +16,14 @@ if is_ssl:
 class ExceptionRecursiveRet(Exception):
     pass
 
+
 class AuthenticationFailedException(Exception):
     pass
 
+
 class ExceptionCodeRet(Exception):
     pass
+
 
 class REST_ClientError(Exception):
     pass
@@ -32,12 +35,10 @@ PREFIX_INTERACT = "__GSQL__INTERACT__"
 PREFIX_RET = "__GSQL__RETURN__CODE__"
 PREFIX_COOKIE = "__GSQL__COOKIES__"
 
-
 FILE_PATTERN = re.compile("@[^@]*[^;,]")
 PROGRESS_PATTERN = re.compile("\\[=*\\s*\\]\\s[0-9]+%.*")
 COMPLETE_PATTERN = re.compile("\\[=*\\s*\\]\\s100%[^l]*")
 TOKEN_PATTERN = re.compile("- Token: ([^ ]+) expire at: (.+)")
-
 
 NULL_MODE = 0
 VERTEX_MODE = 1
@@ -58,12 +59,10 @@ CATALOG_MODES = {
 
 
 def _is_mode_line(line):
-
     return line.endswith(":")
 
 
 def _get_current_mode(line):
-
     return CATALOG_MODES.get(line[:-1], NULL_MODE)
 
 
@@ -77,20 +76,19 @@ VERSION_COMMIT = {
     "3.0.0": "c90ec746a7e77ef5b108554be2133dfd1e1ab1b2",
     "3.0.5": "a9f902e5c552780589a15ba458adb48984359165",
     "3.1.0": "e9d3c5d98e7229118309f6d4bbc9446bad7c4c3d",
-    
+
 }
 
 
 class GSQL_Client(object):
 
-
-    def __init__(self, server_ip="127.0.0.1", username="tigergraph", password="tigergraph", cacert="",
-                 version="", protocol="https", gsPort="14240", commit="",graph="",token=""):
-
+    def __init__(self, server_ip="127.0.0.1", username="tigergraph", password="tigergraph", local=False, cacert="",
+                 version="", protocol="https", gsPort="14240", commit="", graph="", token=""):
+        self.request_session = requests.Session()
         self._logger = logging.getLogger("gsql_client.Client")
         self._server_ip = server_ip
-        self._username = username
-        self._password = password
+        self.username = username
+        self.password = password
         self.graph = graph
         self.gsPort = gsPort
         self.token = token
@@ -121,18 +119,17 @@ class GSQL_Client(object):
         else:
             self._context = None
         self.base64_credential = base64.b64encode(
-            "{0}:{1}".format(self._username, self._password).encode("utf-8")).decode("utf-8")
+            "{0}:{1}".format(self.username, self.password).encode("utf-8")).decode("utf-8")
 
-     
-        self.is_local = server_ip.startswith("localhost")
+        self.is_local = local
 
         if self.is_local:
-            self._base_url = "/gsql/"  
+            self._base_url = "/gsql/"
             if ":" not in server_ip:
                 port = self.gsPort
                 self._server_ip = "{0}:{1}".format(server_ip, port)
         else:
-            self._base_url = "/gsqlserver/gsql/"  #   
+            self._base_url = "/gsqlserver/gsql/"  #
             if ":" not in server_ip:
                 self._server_ip = "{0}:{1}".format(server_ip, self.gsPort)
 
@@ -141,12 +138,15 @@ class GSQL_Client(object):
         self.session = ""
         self.properties = ""
         if self.protocol == "https":
-            self.gsqlUrl = "https://"+self._server_ip+self._base_url
+            self.gsqlUrl = "https://" + self._server_ip + self._base_url
 
         else:
             self.gsqlUrl = "http://" + self._server_ip + self._base_url
-
+        self.cookie = {}
         self.authorization = 'Basic {0}'.format(self.base64_credential)
+
+    def setGraph(self, graph):
+        self.graph = graph
 
     def initialize_url(self):
         self.command_url = self._base_url + "command"
@@ -156,7 +156,7 @@ class GSQL_Client(object):
         self.reset_url = self._base_url + "reset"
         self.file_url = self._base_url + "file"
         self.dialog_url = self._base_url + "dialog"
-
+        self.conn = None
         self.info_url = self._base_url + "getinfo"
         self.abort_url = self._base_url + self._abort_name
 
@@ -166,9 +166,11 @@ class GSQL_Client(object):
 
         if self.graph:
             cookie["graph"] = self.graph
-
+        cookie["fromGsqlClient"] = True
         if self.session:
-            cookie["session"] = self.session
+            cookie["sessionId"] = self.session
+
+        cookie["serverId"] = "1_1613327897156"
 
         if self.properties:
             cookie["properties"] = self.properties
@@ -179,22 +181,24 @@ class GSQL_Client(object):
         return json.dumps(cookie, ensure_ascii=True)
 
     def set_cookie(self, cookie_str):
- 
+
         cookie = json.loads(cookie_str)
-        self.session = cookie.get("session", "")
+        self.session = cookie.get("sessionId", "")
         self.graph = cookie.get("graph", "")
         self.properties = cookie.get("properties", "")
 
-    def setToken(self,token):
+    def setToken(self, token):
         self.token = token
+
     def _setup_connection(self, url, content, cookie=None, auth=True):
-        
+
         if self.protocol == "https":
             ssl._create_default_https_context = ssl._create_unverified_context
-            conn = HTTPSConnection(self._server_ip)   
+            conn = HTTPSConnection(self._server_ip)
         else:
             conn = HTTPConnection(self._server_ip)
         encoded = quote_plus(content.encode("utf-8"))
+        cookie_value = self.get_cookie() if cookie is None else cookie
         headers = {
             "Content-Language": "en-US",
             "Content-Length": str(len(encoded)),
@@ -203,27 +207,34 @@ class GSQL_Client(object):
             "Connection": "keep-alive",
             "Content-Type": "application/x-www-form-urlencoded",
             "User-Agent": "Java/1.8.0",
-            "Cookie": self.get_cookie() if cookie is None else cookie
+            "Cookie": cookie_value
         }
-        
+
         if auth:
             headers["Authorization"] = self.authorization
-        conn.request("POST", url, encoded, headers)
-        return conn
 
+        URI = self.protocol+"://"+self._server_ip+url
+
+        res = self.request_session.post(URI,headers=headers,data=encoded)
+        # conn.request("POST", url, encoded, headers)
+
+        return res
     def request(self, url, content, handler=None, cookie=None, auth=True):
         response = None
         try:
             r = self._setup_connection(url, content, cookie, auth)
-            response = r.getresponse()
-            ret_code = response.status
+            # response = r.getresponse()
+            response = r
+            # ret_code = response.status
+            ret_code = r.status_code
             if ret_code == 401:
                 raise AuthenticationFailedException("Invalid Username/Password!")
             if handler:
-                reader = codecs.getreader("utf-8")(response)
+                # reader = codecs.getreader("utf-8")(r.content)
+                reader = r.text.split("\n")
                 return handler(reader)
             else:
-                return response.read().decode("utf-8")
+                return response.content.decode("utf-8")
         finally:
             if response:
                 response.close()
@@ -231,7 +242,6 @@ class GSQL_Client(object):
     def _dialog(self, response):
 
         self._request(self.dialog_url, response)
-
 
     def command_interactive(self, url, content, ans="", out=False):
 
@@ -241,7 +251,7 @@ class GSQL_Client(object):
             for line in reader:
                 line = line.strip()
                 if line.startswith(PREFIX_RET):
-                    #! print(line)
+                    # ! print(line)
                     import time
                     time.sleep(5000)
                     _, ret = line.split(",", 1)
@@ -256,6 +266,7 @@ class GSQL_Client(object):
                 elif line.startswith(PREFIX_COOKIE):
                     _, cookie_s = line.split(",", 1)
                     self.set_cookie(cookie_s)
+                    # print(cookie_s)
                 elif line.startswith(PREFIX_CURSOR_UP):
                     values = line.split(",")
                     print("\033[" + values[1] + "A")
@@ -273,11 +284,11 @@ class GSQL_Client(object):
 
         return self.request(url, content, __handle__interactive)
 
-    def login(self,commit_try="",version_try=""):
-        
+    def login(self, commit_try="", version_try=""):
+
         if self._client_commit == "" and commit_try == "":
             for k in VERSION_COMMIT:
-                if(self.login(version_try=k,commit_try=VERSION_COMMIT[k]) == True):
+                if (self.login(version_try=k, commit_try=VERSION_COMMIT[k]) == True):
                     break
         elif commit_try != "":
             self._client_commit = commit_try
@@ -286,7 +297,7 @@ class GSQL_Client(object):
         try:
             Cookies = {}
             Cookies['clientCommit'] = self._client_commit
-            r = self._setup_connection(self.login_url, self.base64_credential,cookie=json.dumps(Cookies), auth=False)
+            r = self._setup_connection(self.login_url, self.base64_credential, cookie=json.dumps(Cookies), auth=False)
             response = r.getresponse()
             ret_code = response.status
             # print(response.status)
@@ -304,7 +315,6 @@ class GSQL_Client(object):
                     # print("This client is not compatible with target TigerGraph Server!  Please specify a correct version when creating this client!")
                     return False
 
-
                 if res.get("error", False):
                     if "Wrong password!" in res.get("message", ""):
                         raise ExceptionAuth("Invalid Username/Password!")
@@ -317,45 +327,49 @@ class GSQL_Client(object):
             if response:
                 response.close()
 
-    def _setup_connectionpp(self, method, endpoint, parameters, content):
+    def _setup_connectionpp(self, method, endpoint, parameters, content,headers):
         url = native_str(endpoint)
         if parameters:
             param_str = native_str(urlencode(parameters))
             if param_str:  # not None nor Empty
                 url += "?" + param_str
 
-        headers = {
+        _headers = {
             "Content-Language": "en-US",
             "Pragma": "no-cache",
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "Content-Type": "application/json"
         }
-
+        if headers:
+            _headers.update(headers)
         if content:
             encoded = content.encode("utf-8")
-            headers["Content-Length"] = str(len(encoded))
+            _headers["Content-Length"] = str(len(encoded))
         else:
             encoded = None
 
         if self.token:
-            headers["Authorization"] = "Bearer {0}".format(self.token)
-        elif self._username and self._password:
-            headers["Authorization"] = 'Basic {0}'.format(self.base64_credential)
+            _headers["Authorization"] = "Bearer {0}".format(self.token)
+        elif self.username and self.password:
+            _headers["Authorization"] = 'Basic {0}'.format(self.base64_credential)
 
         if self.protocol == "https":
             ssl._create_default_https_context = ssl._create_unverified_context
             conn = HTTPSConnection(self._server_ip)
         else:
             conn = HTTPConnection(self._server_ip)
-        conn.request(method, url, encoded, headers)
+        conn.request(method, url, encoded, _headers)
         return conn
 
+    def _errorCheck(self, res):
+        if "error" in res and res["error"] and res["error"] != "false":
+            raise Exception(res["message"], (res["code"] if "code" in res else None))
 
-    def requestpp(self, method, endpoint, parameters=None, content=None):
+    def requestpp(self, method, endpoint, parameters=None, content=None,headers=None, resKey="", skipCheck=False):
         response = None
         try:
-            r = self._setup_connectionpp(method, endpoint, parameters, content)
+            r = self._setup_connectionpp(method, endpoint, parameters, content, headers)
             response = r.getresponse()
             ret_code = response.status
             if ret_code == 401:
@@ -363,55 +377,45 @@ class GSQL_Client(object):
             response_text = response.read().decode("utf-8")
             self._logger.debug(response_text)
             res = json.loads(response_text, strict=False)
+            if not skipCheck:
+                self._errorCheck(res)
 
-            if "error" not in res:
-                return res
-            elif res["error"] and res["error"] != "false":
-                self._logger.error("API error: " + res["message"])
-                raise REST_ClientError(res.get("message", ""))
-            elif "token" in res:
-                return res["token"]
-            elif "results" in res:
-                return res["results"]
-            elif "message" in res:
-                return res["message"]
-            else:
-                return res
+            if resKey != "":
+                return res[resKey]
+            return res
+
         finally:
             if response:
                 response.close()
 
+    def get(self, endpoint, parameters=None,headers=None, resKey="", skipCheck=False):
+        return self.requestpp("GET", self.gsqlUrl + endpoint, parameters, None, headers, resKey, skipCheck)
 
-
-
-    def get(self, endpoint, parameters=None):
-        return self.requestpp("GET", self.gsqlUrl + endpoint, parameters, None)
-
-    def post(self, endpoint, parameters=None, content=None):
-        return self.requestpp("POST", self.gsqlUrl + endpoint, parameters, content)
+    def post(self, endpoint, parameters=None, content=None,headers=None, resKey="", skipCheck=False):
+        return self.requestpp("POST", self.gsqlUrl + endpoint, parameters, content, headers, resKey, skipCheck)
 
     def delete(self, endpoint, parameters=None):
-        return self.requestpp("DELETE",self.gsqlUrl + endpoint, parameters, None)
+        return self.requestpp("DELETE", self.gsqlUrl + endpoint, parameters, None)
 
     def execute(self, content, ans="", out=False):
-        return self.command_interactive(self.command_url, content, ans,out)
+        return self.command_interactive(self.command_url, content, ans, out)
 
 
 class REST_Client(object):
-    def __init__(self, server_ip,protocol,cacert, token, username \
-                 ,restPort, password):
+    def __init__(self, server_ip, protocol, cacert, token, username \
+                 , restPort, password):
         self.token = token
         self.restPort = restPort
-        self._username = username
-        self._password = password
-        self._base64_credential = base64.b64encode(
-            "{0}:{1}".format(self._username, self._password).encode("utf-8")).decode("utf-8")
+        self.username = username
+        self.password = password
+        self.base64_credential = base64.b64encode(
+            "{0}:{1}".format(self.username, self.password).encode("utf-8")).decode("utf-8")
         self.protocol = protocol
         if self.protocol == "https":
             self._context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
             self._context.check_hostname = False
             self._context.verify_mode = ssl.CERT_REQUIRED
-            self._context.load_verify_locations(cacert) # ToDo : Get the certificate from URL
+            self._context.load_verify_locations(cacert)
         else:
             self._context = None
         server_ip = native_str(server_ip)
@@ -423,44 +427,49 @@ class REST_Client(object):
 
         self._logger = logging.getLogger("gsql_client.restpp.RESTPP")
 
-    def _setup_connection(self, method, endpoint, parameters, content):
+    def _setup_connection(self, method, endpoint, parameters, content, headers):
         url = native_str(endpoint)
         if parameters:
             param_str = native_str(urlencode(parameters))
             if param_str:  # not None nor Empty
                 url += "?" + param_str
 
-        headers = {
+        _headers = {
             "Content-Language": "en-US",
             "Pragma": "no-cache",
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "Content-Type": "application/json"
         }
-
+        if headers:
+            _headers.update(headers)
         if content:
             encoded = content.encode("utf-8")
-            headers["Content-Length"] = str(len(encoded))
+            _headers["Content-Length"] = str(len(encoded))
         else:
             encoded = None
 
         if self.token:
-            headers["Authorization"] = "Bearer {0}".format(self.token)
-        elif self._username and self._password:
-            headers["Authorization"] = 'Basic {0}'.format(self.base64_credential)
+            _headers["Authorization"] = "Bearer {0}".format(self.token)
+        elif self.username and self.password:
+            _headers["Authorization"] = 'Basic {0}'.format(self.base64_credential)
 
         if self.protocol == "https":
             ssl._create_default_https_context = ssl._create_unverified_context
             conn = HTTPSConnection(self._server_ip)
         else:
             conn = HTTPConnection(self._server_ip)
-        conn.request(method, url, encoded, headers)
+        conn.request(method, url, encoded, _headers)
         return conn
 
-    def request(self, method, endpoint, parameters=None, content=None):
+    def _errorCheck(self, res):
+        if "error" in res and res["error"] and res["error"] != "false":
+            raise Exception(res["message"], (res["code"] if "code" in res else None))
+
+    def request(self, method, endpoint, parameters=None, content=None,  headers=None, resKey="", skipCheck=False):
         response = None
         try:
-            r = self._setup_connection(method, endpoint, parameters, content)
+            r = self._setup_connection(method, endpoint, parameters, content, headers)
             response = r.getresponse()
             ret_code = response.status
             if ret_code == 401:
@@ -469,38 +478,29 @@ class REST_Client(object):
             self._logger.debug(response_text)
             res = json.loads(response_text, strict=False)
 
-            if "error" not in res:
-                return res
-            elif res["error"] and res["error"] != "false":
-                self._logger.error("API error: " + res["message"])
-                raise REST_ClientError(res.get("message", ""))
-            elif "token" in res:
-                return res["token"]
-            elif "results" in res:
-                return res["results"]
-            elif "message" in res:
-                return res["message"]
-            else:
-                return res
+            if not skipCheck:
+                self._errorCheck(res)
+
+            if resKey != '':
+                return res[resKey]
+
+            return res
         finally:
             if response:
                 response.close()
 
-    def setToken(self,token):
+    def setToken(self, token):
         self.token = token
 
-    def get(self, endpoint, parameters=None):
-        return self.request("GET", endpoint, parameters, None)
+    #def get(self, path, headers=None, resKey="results", skipCheck=False, params=None):
+    def get(self, endpoint, parameters=None, headers=None, resKey="", skipCheck=False):
+        return self.request("GET", endpoint, parameters, None, headers, resKey, skipCheck)
 
-    def post(self, endpoint, parameters=None, content=None):
-        return self.request("POST", endpoint, parameters, content)
+    def post(self, endpoint, parameters=None, content=None, headers=None, resKey="", skipCheck=False):
+        return self.request("POST", endpoint, parameters, content, headers, resKey, skipCheck)
 
     def delete(self, endpoint, parameters=None):
         return self.request("DELETE", endpoint, parameters, None)
 
-
-
     def echo(self):
         return self.get("/echo")
-
-
