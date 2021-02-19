@@ -5,7 +5,7 @@ from .pyDriver import GSQL_Client, ExceptionRecursiveRet, ExceptionCodeRet, REST
 
 
 class Client():
-    def __init__(self, server_ip="127.0.0.1", username="tigergraph", password="tigergraph",local=False, cacert=""
+    def __init__(self, server_ip="127.0.0.1", username="tigergraph", password="tigergraph", local=False, cacert=""
                  , version="3.0.5", commit="", restPort="9000", gsPort="14240", protocol="https"
                  , graph="MyGraph", token=""):
         sslCert = ""
@@ -25,9 +25,10 @@ class Client():
         cert.close()
         self.Rest = REST_Client(server_ip=server_ip, protocol=protocol, restPort=restPort, token=token
                                 , username=username, password=password, cacert=self.cacert)
-        self.Gsql = GSQL_Client(server_ip=server_ip, username=username, password=password,local=local, cacert=self.cacert
-                                , version=version, commit=commit, graph=graph, gsPort=gsPort, protocol=protocol)
+        self.Gsql = GSQL_Client(server_ip=server_ip, username=username, password=password, local=local,
+                                cacert=self.cacert, version=version, commit=commit, graph=graph, gsPort=gsPort
+                                , protocol=protocol)
 
-    def setToken(self,token=""):
+    def setToken(self, token=""):
         self.Gsql.setToken(token)
         self.Rest.setToken(token)
