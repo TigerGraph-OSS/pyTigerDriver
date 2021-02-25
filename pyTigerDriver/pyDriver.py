@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
-
-
 import re
 import base64
 import json
 import logging
-import codecs
 import requests
 from .misc import quote_plus, urlencode, is_ssl, HTTPConnection, HTTPSConnection, ExceptionAuth, native_str
 
@@ -59,10 +56,20 @@ CATALOG_MODES = {
 
 
 def _is_mode_line(line):
+    """
+
+    :param line:
+    :return:
+    """
     return line.endswith(":")
 
 
 def _get_current_mode(line):
+    """
+
+    :param line:
+    :return:
+    """
     return CATALOG_MODES.get(line[:-1], NULL_MODE)
 
 
@@ -76,7 +83,6 @@ VERSION_COMMIT = {
     "3.0.0": "c90ec746a7e77ef5b108554be2133dfd1e1ab1b2",
     "3.0.5": "a9f902e5c552780589a15ba458adb48984359165",
     "3.1.0": "e9d3c5d98e7229118309f6d4bbc9446bad7c4c3d",
-
 }
 
 
@@ -84,6 +90,20 @@ class GSQL_Client(object):
 
     def __init__(self, server_ip="127.0.0.1", username="tigergraph", password="tigergraph", local=False, cacert="",
                  version="", protocol="https", gsPort="14240", commit="", graph="", token=""):
+        """
+
+        :param server_ip:
+        :param username:
+        :param password:
+        :param local:
+        :param cacert:
+        :param version:
+        :param protocol:
+        :param gsPort:
+        :param commit:
+        :param graph:
+        :param token:
+        """
         self.request_session = requests.Session()
         self._logger = logging.getLogger("gsql_client.Client")
         self._server_ip = server_ip
@@ -98,14 +118,11 @@ class GSQL_Client(object):
             self._client_commit = VERSION_COMMIT[version]
         else:
             self._client_commit = ""
-
         self._version = version
-
         if self._version and self._version >= "2.3.0":
             self._abort_name = "abortclientsession"
         else:
             self._abort_name = "abortloadingprogress"
-
         self.protocol = protocol
         if self.protocol == "https":
             self._context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
@@ -114,15 +131,12 @@ class GSQL_Client(object):
             if cacert:
                 self._context.load_verify_locations(cacert)
             else:
-                pass
-                # Todo : Get CACERT from url provided
+                pass   # Todo : Get CACERT from url provided
         else:
             self._context = None
         self.base64_credential = base64.b64encode(
             "{0}:{1}".format(self.username, self.password).encode("utf-8")).decode("utf-8")
-
         self.is_local = local
-
         if self.is_local:
             self._base_url = "/gsql/"
             if ":" not in server_ip:
@@ -132,23 +146,29 @@ class GSQL_Client(object):
             self._base_url = "/gsqlserver/gsql/"  #
             if ":" not in server_ip:
                 self._server_ip = "{0}:{1}".format(server_ip, self.gsPort)
-
         self.initialize_url()
-
         self.session = ""
         self.properties = ""
         if self.protocol == "https":
             self.gsqlUrl = "https://" + self._server_ip + self._base_url
-
         else:
             self.gsqlUrl = "http://" + self._server_ip + self._base_url
         self.cookie = {}
         self.authorization = 'Basic {0}'.format(self.base64_credential)
 
     def setGraph(self, graph):
+        """
+
+        :param graph:
+        :return:
+        """
         self.graph = graph
 
     def initialize_url(self):
+        """
+
+        :return:
+        """
         self.command_url = self._base_url + "command"
         self.version_url = self._base_url + "version"
         self.help_url = self._base_url + "help"
@@ -161,7 +181,10 @@ class GSQL_Client(object):
         self.abort_url = self._base_url + self._abort_name
 
     def get_cookie(self):
+        """
 
+        :return:
+        """
         cookie = {}
 
         if self.graph:
@@ -169,29 +192,41 @@ class GSQL_Client(object):
         cookie["fromGsqlClient"] = True
         if self.session:
             cookie["sessionId"] = self.session
-
-        cookie["serverId"] = "1_1613327897156"
-
         if self.properties:
             cookie["properties"] = self.properties
 
         if self._client_commit:
             cookie["commitClient"] = self._client_commit
-
         return json.dumps(cookie, ensure_ascii=True)
 
     def set_cookie(self, cookie_str):
+        """
 
+        :param cookie_str:
+        :return:
+        """
         cookie = json.loads(cookie_str)
         self.session = cookie.get("sessionId", "")
         self.graph = cookie.get("graph", "")
         self.properties = cookie.get("properties", "")
 
     def setToken(self, token):
+        """
+
+        :param token:
+        :return:
+        """
         self.token = token
 
     def _setup_connection(self, url, content, cookie=None, auth=True):
+        """
 
+        :param url:
+        :param content:
+        :param cookie:
+        :param auth:
+        :return:
+        """
         if self.protocol == "https":
             ssl._create_default_https_context = ssl._create_unverified_context
             conn = HTTPSConnection(self._server_ip)
@@ -209,28 +244,30 @@ class GSQL_Client(object):
             "User-Agent": "Java/1.8.0",
             "Cookie": cookie_value
         }
-
         if auth:
             headers["Authorization"] = self.authorization
-
         URI = self.protocol+"://"+self._server_ip+url
-
-        res = self.request_session.post(URI,headers=headers,data=encoded)
-        # conn.request("POST", url, encoded, headers)
-
+        res = self.request_session.post(URI, headers=headers, data=encoded)
         return res
+
     def request(self, url, content, handler=None, cookie=None, auth=True):
+        """
+
+        :param url:
+        :param content:
+        :param handler:
+        :param cookie:
+        :param auth:
+        :return:
+        """
         response = None
         try:
             r = self._setup_connection(url, content, cookie, auth)
-            # response = r.getresponse()
             response = r
-            # ret_code = response.status
             ret_code = r.status_code
             if ret_code == 401:
                 raise AuthenticationFailedException("Invalid Username/Password!")
             if handler:
-                # reader = codecs.getreader("utf-8")(r.content)
                 reader = r.text.split("\n")
                 return handler(reader)
             else:
@@ -240,20 +277,32 @@ class GSQL_Client(object):
                 response.close()
 
     def _dialog(self, response):
+        """
 
-        self._request(self.dialog_url, response)
+        :param response:
+        :return:
+        """
+        self.request(self.dialog_url, response)
 
     def command_interactive(self, url, content, ans="", out=False):
+        """
 
+        :param url:
+        :param content:
+        :param ans:
+        :param out:
+        :return:
+        """
         def __handle__interactive(reader):
+            """
 
+            :param reader:
+            :return:
+            """
             res = []
             for line in reader:
                 line = line.strip()
                 if line.startswith(PREFIX_RET):
-                    # ! print(line)
-                    import time
-                    time.sleep(5000)
                     _, ret = line.split(",", 1)
                     ret = int(ret)
                     if ret != 0:
@@ -266,7 +315,6 @@ class GSQL_Client(object):
                 elif line.startswith(PREFIX_COOKIE):
                     _, cookie_s = line.split(",", 1)
                     self.set_cookie(cookie_s)
-                    # print(cookie_s)
                 elif line.startswith(PREFIX_CURSOR_UP):
                     values = line.split(",")
                     print("\033[" + values[1] + "A")
@@ -285,22 +333,25 @@ class GSQL_Client(object):
         return self.request(url, content, __handle__interactive)
 
     def login(self, commit_try="", version_try=""):
+        """
 
+        :param commit_try:
+        :param version_try:
+        :return:
+        """
         if self._client_commit == "" and commit_try == "":
             for k in VERSION_COMMIT:
-                if (self.login(version_try=k, commit_try=VERSION_COMMIT[k]) == True):
+                if self.login(version_try=k, commit_try=VERSION_COMMIT[k]):
                     break
         elif commit_try != "":
             self._client_commit = commit_try
             self._version = version_try
         response = None
         try:
-            Cookies = {}
-            Cookies['clientCommit'] = self._client_commit
+            Cookies = {'clientCommit': self._client_commit}
             r = self._setup_connection(self.login_url, self.base64_credential, cookie=json.dumps(Cookies), auth=False)
             response = r.getresponse()
             ret_code = response.status
-            # print(response.status)
             if ret_code == 200:
                 content = response.read()
                 res = json.loads(content.decode("utf-8"))
@@ -328,6 +379,15 @@ class GSQL_Client(object):
                 response.close()
 
     def _setup_connectionpp(self, method, endpoint, parameters, content,headers):
+        """
+
+        :param method:
+        :param endpoint:
+        :param parameters:
+        :param content:
+        :param headers:
+        :return:
+        """
         url = native_str(endpoint)
         if parameters:
             param_str = native_str(urlencode(parameters))
@@ -363,10 +423,26 @@ class GSQL_Client(object):
         return conn
 
     def _errorCheck(self, res):
+        """
+
+        :param res:
+        :return:
+        """
         if "error" in res and res["error"] and res["error"] != "false":
             raise Exception(res["message"], (res["code"] if "code" in res else None))
 
     def requestpp(self, method, endpoint, parameters=None, content=None,headers=None, resKey="", skipCheck=False):
+        """
+
+        :param method:
+        :param endpoint:
+        :param parameters:
+        :param content:
+        :param headers:
+        :param resKey:
+        :param skipCheck:
+        :return:
+        """
         response = None
         try:
             r = self._setup_connectionpp(method, endpoint, parameters, content, headers)
@@ -389,21 +465,63 @@ class GSQL_Client(object):
                 response.close()
 
     def get(self, endpoint, parameters=None,headers=None, resKey="", skipCheck=False):
+        """
+
+        :param endpoint:
+        :param parameters:
+        :param headers:
+        :param resKey:
+        :param skipCheck:
+        :return:
+        """
         return self.requestpp("GET", self.gsqlUrl + endpoint, parameters, None, headers, resKey, skipCheck)
 
     def post(self, endpoint, parameters=None, content=None,headers=None, resKey="", skipCheck=False):
+        """
+
+        :param endpoint:
+        :param parameters:
+        :param content:
+        :param headers:
+        :param resKey:
+        :param skipCheck:
+        :return:
+        """
         return self.requestpp("POST", self.gsqlUrl + endpoint, parameters, content, headers, resKey, skipCheck)
 
     def delete(self, endpoint, parameters=None):
+        """
+
+        :param endpoint:
+        :param parameters:
+        :return:
+        """
         return self.requestpp("DELETE", self.gsqlUrl + endpoint, parameters, None)
 
     def execute(self, content, ans="", out=False):
+        """
+
+        :param content:
+        :param ans:
+        :param out:
+        :return:
+        """
         return self.command_interactive(self.command_url, content, ans, out)
 
 
 class REST_Client(object):
     def __init__(self, server_ip, protocol, cacert, token, username \
                  , restPort, password):
+        """
+
+        :param server_ip:
+        :param protocol:
+        :param cacert:
+        :param token:
+        :param username:
+        :param restPort:
+        :param password:
+        """
         self.token = token
         self.restPort = restPort
         self.username = username
@@ -428,6 +546,15 @@ class REST_Client(object):
         self._logger = logging.getLogger("gsql_client.restpp.RESTPP")
 
     def _setup_connection(self, method, endpoint, parameters, content, headers):
+        """
+
+        :param method:
+        :param endpoint:
+        :param parameters:
+        :param content:
+        :param headers:
+        :return:
+        """
         url = native_str(endpoint)
         if parameters:
             param_str = native_str(urlencode(parameters))
@@ -463,10 +590,26 @@ class REST_Client(object):
         return conn
 
     def _errorCheck(self, res):
+        """
+
+        :param res:
+        :return:
+        """
         if "error" in res and res["error"] and res["error"] != "false":
             raise Exception(res["message"], (res["code"] if "code" in res else None))
 
     def request(self, method, endpoint, parameters=None, content=None,  headers=None, resKey="", skipCheck=False):
+        """
+
+        :param method:
+        :param endpoint:
+        :param parameters:
+        :param content:
+        :param headers:
+        :param resKey:
+        :param skipCheck:
+        :return:
+        """
         response = None
         try:
             r = self._setup_connection(method, endpoint, parameters, content, headers)
@@ -490,17 +633,50 @@ class REST_Client(object):
                 response.close()
 
     def setToken(self, token):
+        """
+
+        :param token:
+        :return:
+        """
         self.token = token
 
-    #def get(self, path, headers=None, resKey="results", skipCheck=False, params=None):
     def get(self, endpoint, parameters=None, headers=None, resKey="", skipCheck=False):
+        """
+
+        :param endpoint:
+        :param parameters:
+        :param headers:
+        :param resKey:
+        :param skipCheck:
+        :return:
+        """
         return self.request("GET", endpoint, parameters, None, headers, resKey, skipCheck)
 
     def post(self, endpoint, parameters=None, content=None, headers=None, resKey="", skipCheck=False):
+        """
+
+        :param endpoint:
+        :param parameters:
+        :param content:
+        :param headers:
+        :param resKey:
+        :param skipCheck:
+        :return:
+        """
         return self.request("POST", endpoint, parameters, content, headers, resKey, skipCheck)
 
     def delete(self, endpoint, parameters=None):
+        """
+
+        :param endpoint:
+        :param parameters:
+        :return:
+        """
         return self.request("DELETE", endpoint, parameters, None)
 
     def echo(self):
+        """
+
+        :return:
+        """
         return self.get("/echo")
